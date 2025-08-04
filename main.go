@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -220,14 +221,17 @@ func runQuery(conn clickhouse.Conn, input *tview.InputField, table *tview.Table,
 			}
 		})
 
+		
+		scanTargets := make([]interface{}, len(columns))
 		rowNum := 1
 		for rows.Next() {
-			values := rows.ColumnTypes()
-
-			scanTargets := make([]interface{}, len(values))
-			for i, col := range values {
-				// fallback: use string
-				scanTargets[i] = &col
+			if rowNum == 1 {
+				colTypes := rows.ColumnTypes()
+				for i, col := range colTypes {
+					typ := col.ScanType()
+					ptr := reflect.New(typ).Interface()
+					scanTargets[i] = ptr
+				}
 			}
 
 			if err := rows.Scan(scanTargets...); err != nil {
@@ -239,8 +243,16 @@ func runQuery(conn clickhouse.Conn, input *tview.InputField, table *tview.Table,
 
 			rowStr := make([]string, len(scanTargets))
 			for i, v := range scanTargets {
-				val := *(v.(*string))
-				rowStr[i] = val
+				rv := reflect.ValueOf(v).Elem()
+				if rv.Kind() == reflect.Ptr {
+					if !rv.IsNil() {
+						rowStr[i] = fmt.Sprintf("%v", rv.Elem().Interface())
+					} else {
+						rowStr[i] = ""
+					}
+				} else {
+					rowStr[i] = fmt.Sprintf("%v", rv.Interface())
+				}
 			}
 
 			lastResult = append(lastResult, rowStr)
@@ -252,7 +264,6 @@ func runQuery(conn clickhouse.Conn, input *tview.InputField, table *tview.Table,
 			})
 			rowNum++
 		}
-
 
 		if rows.Err() != nil {
 			app.QueueUpdateDraw(func() {
