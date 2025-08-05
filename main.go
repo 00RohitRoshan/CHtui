@@ -124,6 +124,7 @@ func connectAndStartUI() {
 	}
 
 	conn, err := clickhouse.Open(&clickhouse.Options{
+		Protocol: determineProtocol(config.Port),
 		Addr: []string{addr},
 		Auth: clickhouse.Auth{
 			Database: config.Database,
@@ -177,15 +178,15 @@ func showUI(conn clickhouse.Conn) {
 			navigateHistory(input, 1)
 			return nil
 
-		case  event.Rune() == 'r':
+		case event.Rune() == 18: // Ctrl+R
 			navigateHistory(input, -1)
 			return nil
 
-		case  event.Rune() == 'e':
+		case event.Rune() == 5: // Ctrl+E
 			go exportCSV(status)
 			return nil
 
-		case  event.Rune() == 'q':
+		case event.Rune() == 17: // Ctrl+Q
 			app.Stop()
 			return nil
 		}
@@ -338,6 +339,7 @@ func saveHistory() {
 }
 
 func exportCSV(status *tview.TextView) {
+	status.Clear()
 	if len(lastResult) == 0 {
 		fmt.Fprintf(status,"[yellow]No results to export.")
 		return
@@ -378,4 +380,20 @@ func saveConfig(username string, cfg *Config) error {
 		return err
 	}
 	return os.WriteFile(configFilePath(username), data, 0600)
+}
+
+// determineProtocol returns the ClickHouse protocol based on the port number.
+func determineProtocol(port string) clickhouse.Protocol {
+	switch port {
+	case "9000":
+		return clickhouse.Native
+	case "9440":
+		return clickhouse.Native
+	case "8123":
+		return clickhouse.HTTP
+	case "8443":
+		return clickhouse.HTTP
+	default:
+		return clickhouse.Native
+	}
 }
