@@ -177,15 +177,15 @@ func showUI(conn clickhouse.Conn) {
 			navigateHistory(input, 1)
 			return nil
 
-		case event.Modifiers() == tcell.ModCtrl && event.Rune() == 'r':
+		case  event.Rune() == 'r':
 			navigateHistory(input, -1)
 			return nil
 
-		case event.Modifiers() == tcell.ModCtrl && event.Rune() == 'e':
-			exportCSV()
+		case  event.Rune() == 'e':
+			go exportCSV(status)
 			return nil
 
-		case event.Modifiers() == tcell.ModCtrl && event.Rune() == 'q':
+		case  event.Rune() == 'q':
 			app.Stop()
 			return nil
 		}
@@ -337,16 +337,16 @@ func saveHistory() {
 	}()
 }
 
-func exportCSV() {
+func exportCSV(status *tview.TextView) {
 	if len(lastResult) == 0 {
-		log.Println("No results to export.")
+		fmt.Fprintf(status,"[yellow]No results to export.")
 		return
 	}
 
 	filename := fmt.Sprintf("results_%s.csv", time.Now().Format("20060102_150405"))
 	file, err := os.Create(filename)
 	if err != nil {
-		log.Printf("Failed to create file: %v", err)
+		fmt.Fprintf(status,"[red]Failed to create file: %v", err)
 		return
 	}
 	defer file.Close()
@@ -356,7 +356,7 @@ func exportCSV() {
 		writer.Write(row)
 	}
 	writer.Flush()
-	log.Printf("Exported to %s", filename)
+	fmt.Fprintf(status,"[green]Exported to %s", filename)
 }
 
 func configFilePath(username string) string {
