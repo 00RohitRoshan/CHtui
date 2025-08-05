@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -8,7 +9,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -36,60 +36,22 @@ var (
 	config       *Config
 	username     string
 	queryHistory []string
+	historyIndex int
+	lastResult   [][]string
 	configLock   sync.Mutex
 	historyLock  sync.Mutex
-	lastResult   [][]string
 )
 
 func main() {
-	// Prompt user for username & connection info
+	reader := bufio.NewReader(os.Stdin)
+
 	fmt.Print("Enter your username: ")
-	fmt.Scanln(&username)
+	username, _ = reader.ReadString('\n')
+	username = strings.TrimSpace(username)
 
 	cfg, _ := loadConfig(username)
 	if cfg == nil {
-		cfg = &Config{}
-		cfg.DBUser = username
-
-		// Prompt for connection values
-		fmt.Print("Enter ClickHouse host (default: localhost): ")
-		fmt.Scanln(&cfg.Host)
-		if cfg.Host == "" {
-			cfg.Host = "localhost"
-		}
-
-		fmt.Print("Enter port (default: 9000): ")
-		fmt.Scanln(&cfg.Port)
-		if cfg.Port == "" {
-			cfg.Port = "9000"
-		}
-
-		fmt.Print("Enter database (default: default): ")
-		fmt.Scanln(&cfg.Database)
-		if cfg.Database == "" {
-			cfg.Database = "default"
-		}
-
-		// fmt.Print("Enter DB username (default: default): ")
-		// fmt.Scanln(&cfg.DBUser)
-		// if cfg.DBUser == "" {
-		// 	cfg.DBUser = "default"
-		// }
-
-		fmt.Print("Enter DB password: ")
-		fmt.Scanln(&cfg.Password)
-
-		fmt.Print("Use TLS? (y/n): ")
-		var tlsAnswer string
-		fmt.Scanln(&tlsAnswer)
-		cfg.UseTLS = strings.ToLower(tlsAnswer) == "y"
-
-		if cfg.UseTLS {
-			fmt.Print("Enter CA file path (optional): ")
-			fmt.Scanln(&cfg.CAFilePath)
-		}
-
-		// Save config to <username>.toml
+		cfg = promptConfig(reader)
 		saveConfig(username, cfg)
 	}
 
@@ -98,14 +60,50 @@ func main() {
 		queryHistory = config.QueryHistory
 	}
 
-	// Connect and start UI
 	connectAndStartUI()
 }
 
+func promptConfig(reader *bufio.Reader) *Config {
+	cfg := &Config{DBUser: username}
+
+	fmt.Print("Enter ClickHouse host (default: localhost): ")
+	host, _ := reader.ReadString('\n')
+	cfg.Host = defaultIfEmpty(strings.TrimSpace(host), "localhost")
+
+	fmt.Print("Enter port (default: 9000): ")
+	port, _ := reader.ReadString('\n')
+	cfg.Port = defaultIfEmpty(strings.TrimSpace(port), "9000")
+
+	fmt.Print("Enter database (default: default): ")
+	database, _ := reader.ReadString('\n')
+	cfg.Database = defaultIfEmpty(strings.TrimSpace(database), "default")
+
+	fmt.Print("Enter DB password: ")
+	password, _ := reader.ReadString('\n')
+	cfg.Password = strings.TrimSpace(password)
+
+	fmt.Print("Use TLS? (y/n): ")
+	tlsAnswer, _ := reader.ReadString('\n')
+	cfg.UseTLS = strings.ToLower(strings.TrimSpace(tlsAnswer)) == "y"
+
+	if cfg.UseTLS {
+		fmt.Print("Enter CA file path (optional): ")
+		caPath, _ := reader.ReadString('\n')
+		cfg.CAFilePath = strings.TrimSpace(caPath)
+	}
+
+	return cfg
+}
+
+func defaultIfEmpty(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
 func connectAndStartUI() {
-	// log.Print("inside connectAndStartUI")
 	app = tview.NewApplication()
-	// log.Print("created tview application")
 
 	addr := fmt.Sprintf("%s:%s", config.Host, config.Port)
 	var tlsConfig *tls.Config
@@ -115,17 +113,17 @@ func connectAndStartUI() {
 			if err != nil {
 				log.Fatalf("Failed to read CA file: %v", err)
 			}
-			certPool := x509.NewCertPool()
-			if !certPool.AppendCertsFromPEM(caCert) {
+			pool := x509.NewCertPool()
+			if !pool.AppendCertsFromPEM(caCert) {
 				log.Fatal("Invalid CA file")
 			}
-			tlsConfig = &tls.Config{RootCAs: certPool}
+			tlsConfig = &tls.Config{RootCAs: pool}
 		} else {
 			tlsConfig = &tls.Config{InsecureSkipVerify: true}
 		}
 	}
 
-	options := &clickhouse.Options{
+	conn, err := clickhouse.Open(&clickhouse.Options{
 		Addr: []string{addr},
 		Auth: clickhouse.Auth{
 			Database: config.Database,
@@ -133,36 +131,42 @@ func connectAndStartUI() {
 			Password: config.Password,
 		},
 		TLS: tlsConfig,
-	}
-
-	conn, err := clickhouse.Open(options)
+	})
 	if err != nil {
-		log.Fatalf("Failed to open connection: %v", err)
+		log.Fatalf("Failed to connect: %v", err)
 	}
+
 	if err := conn.Ping(context.Background()); err != nil {
-		log.Fatalf("Connection failed: %v", err)
+		log.Fatalf("Ping failed: %v", err)
 	}
 
-	go showQueryUI(conn)
-
-	if err := app.Run(); err != nil {
-		log.Fatal(err)
-	}
+	showUI(conn)
 }
 
-func showQueryUI(conn clickhouse.Conn) {
-	// log.Print("inside showQueryUI")
+func showUI(conn clickhouse.Conn) {
+	table := tview.NewTable().SetBorders(false)
 	input := tview.NewInputField().SetLabel("Query: ").SetFieldWidth(0)
 	status := tview.NewTextView().SetDynamicColors(true).SetChangedFunc(func() { app.Draw() })
-	table := tview.NewTable().SetBorders(false)
-	historyList := tview.NewList().ShowSecondaryText(false)
 
-	refreshHistoryList(historyList, input)
+	historyIndex = -1
+
+	input.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			runQuery(conn, input.GetText(), table, status)
+			input.SetText("")
+		}
+	})
 
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch {
+		case event.Key() == tcell.KeyUp:
+			navigateHistory(input, -1)
+			return nil
+		case event.Key() == tcell.KeyDown:
+			navigateHistory(input, 1)
+			return nil
 		case event.Modifiers() == tcell.ModCtrl && event.Rune() == 'r':
-			runQuery(conn, input, table, status)
+			navigateHistory(input, -1)
 			return nil
 		case event.Modifiers() == tcell.ModCtrl && event.Rune() == 'e':
 			exportCSV()
@@ -174,34 +178,30 @@ func showQueryUI(conn clickhouse.Conn) {
 		return event
 	})
 
-	input.SetDoneFunc(func(key tcell.Key) {
-		if key == tcell.KeyEnter {
-			runQuery(conn, input, table, status)
-		}
-	})
-
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(table, 0, 1, false).
 		AddItem(input, 1, 0, true).
-		AddItem(tview.NewFlex().
-			AddItem(historyList, 30, 0, false).
-			AddItem(table, 0, 1, false), 0, 1, false).
 		AddItem(status, 2, 0, false)
 
 	app.SetRoot(layout, true).SetFocus(input)
+	
+	if err := app.Run(); err != nil {
+		log.Fatal(err)
+	}
 }
 
-func runQuery(conn clickhouse.Conn, input *tview.InputField, table *tview.Table, status *tview.TextView) {
-	// log.Print("inside runQuery")
-	query := strings.TrimSpace(input.GetText())
+func runQuery(conn clickhouse.Conn, query string, table *tview.Table, status *tview.TextView) {
+	query = strings.TrimSpace(query)
 	if query == "" {
 		return
 	}
-	addToHistory(query)
-	refreshHistoryList(nil, input)
-	saveHistory()
 
-	status.Clear()
+	go addToHistory(query)
+	go saveHistory()
+
 	table.Clear()
+	status.Clear()
+	start := time.Now()
 
 	go func() {
 		rows, err := conn.Query(context.Background(), query)
@@ -214,23 +214,24 @@ func runQuery(conn clickhouse.Conn, input *tview.InputField, table *tview.Table,
 		defer rows.Close()
 
 		columns := rows.Columns()
+		colTypes := rows.ColumnTypes()
 		lastResult = [][]string{columns}
+
 		app.QueueUpdateDraw(func() {
-			for colIdx, col := range columns {
-				table.SetCell(0, colIdx, tview.NewTableCell(fmt.Sprintf("[::b]%s", col)).SetSelectable(false))
+			for i, col := range columns {
+				table.SetCell(0, i, tview.NewTableCell(fmt.Sprintf("[::b]%s", col)))
 			}
 		})
 
-		
-		scanTargets := make([]interface{}, len(columns))
 		rowNum := 1
+		var scanTargets []interface{}
+
 		for rows.Next() {
-			if rowNum == 1 {
-				colTypes := rows.ColumnTypes()
-				for i, col := range colTypes {
-					typ := col.ScanType()
-					ptr := reflect.New(typ).Interface()
-					scanTargets[i] = ptr
+			// Initialize scanTargets on first row
+			if scanTargets == nil {
+				scanTargets = make([]interface{}, len(colTypes))
+				for i, ct := range colTypes {
+					scanTargets[i] = reflect.New(ct.ScanType()).Interface()
 				}
 			}
 
@@ -243,15 +244,15 @@ func runQuery(conn clickhouse.Conn, input *tview.InputField, table *tview.Table,
 
 			rowStr := make([]string, len(scanTargets))
 			for i, v := range scanTargets {
-				rv := reflect.ValueOf(v).Elem()
-				if rv.Kind() == reflect.Ptr {
-					if !rv.IsNil() {
-						rowStr[i] = fmt.Sprintf("%v", rv.Elem().Interface())
-					} else {
+				val := reflect.ValueOf(v)
+				if val.Kind() == reflect.Ptr {
+					if val.IsNil() {
 						rowStr[i] = ""
+					} else {
+						rowStr[i] = fmt.Sprintf("%v", val.Elem().Interface())
 					}
 				} else {
-					rowStr[i] = fmt.Sprintf("%v", rv.Interface())
+					rowStr[i] = fmt.Sprintf("%v", val.Interface())
 				}
 			}
 
@@ -265,65 +266,46 @@ func runQuery(conn clickhouse.Conn, input *tview.InputField, table *tview.Table,
 			rowNum++
 		}
 
-		if rows.Err() != nil {
+		if err := rows.Err(); err != nil {
 			app.QueueUpdateDraw(func() {
-				fmt.Fprintf(status, "[red]Rows error: %v", rows.Err())
+				fmt.Fprintf(status, "[red]Rows error: %v", err)
 			})
 		} else {
 			app.QueueUpdateDraw(func() {
-				fmt.Fprintf(status, "[green]Query finished. %d rows.", rowNum-1)
+				fmt.Fprintf(status, "[green]Query finished. %d rows in %v", rowNum-1, time.Since(start))
 			})
 		}
 	}()
 }
 
-func exportCSV() {
-	if len(lastResult) == 0 {
-		log.Println("No results to export.")
-		return
-	}
-	filename := fmt.Sprintf("results_%s.csv", time.Now().Format("20060102_150405"))
-	file, err := os.Create(filename)
-	if err != nil {
-		log.Printf("Failed to create file: %v", err)
-		return
-	}
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	for _, row := range lastResult {
-		writer.Write(row)
-	}
-	writer.Flush()
-	log.Printf("Exported to %s", filename)
-}
-
-func refreshHistoryList(list *tview.List, input *tview.InputField) {
-	// log.Print("inside refreshHistoryList")
+func navigateHistory(input *tview.InputField, dir int) {
 	historyLock.Lock()
 	defer historyLock.Unlock()
-	if list != nil {
-		app.QueueUpdateDraw(func() {
-			list.Clear()
-			for _, q := range queryHistory {
-				query := q
-				list.AddItem(query, "", 0, func() {
-					input.SetText(query)
-					app.SetFocus(input)
-				})
-			}
-		})
+
+	if len(queryHistory) == 0 {
+		return
 	}
+
+	historyIndex += dir
+	if historyIndex < 0 {
+		historyIndex = 0
+	} else if historyIndex >= len(queryHistory) {
+		historyIndex = len(queryHistory) - 1
+	}
+
+	input.SetText(queryHistory[historyIndex])
 }
 
 func addToHistory(query string) {
 	historyLock.Lock()
 	defer historyLock.Unlock()
+
 	for _, q := range queryHistory {
 		if q == query {
 			return
 		}
 	}
+
 	queryHistory = append([]string{query}, queryHistory...)
 	if len(queryHistory) > 50 {
 		queryHistory = queryHistory[:50]
@@ -341,10 +323,30 @@ func saveHistory() {
 	}()
 }
 
+func exportCSV() {
+	if len(lastResult) == 0 {
+		log.Println("No results to export.")
+		return
+	}
+
+	filename := fmt.Sprintf("results_%s.csv", time.Now().Format("20060102_150405"))
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Printf("Failed to create file: %v", err)
+		return
+	}
+	defer file.Close()
+
+	writer := csv.NewWriter(file)
+	for _, row := range lastResult {
+		writer.Write(row)
+	}
+	writer.Flush()
+	log.Printf("Exported to %s", filename)
+}
+
 func configFilePath(username string) string {
-	// home, _ := os.UserHomeDir()
-	// return filepath.Join(home, fmt.Sprintf("%s.toml", username))
-	return filepath.Join(fmt.Sprintf("%s.toml", username))
+	return fmt.Sprintf("%s.toml", username)
 }
 
 func loadConfig(username string) (*Config, error) {
@@ -353,8 +355,7 @@ func loadConfig(username string) (*Config, error) {
 		return nil, err
 	}
 	var cfg Config
-	err = toml.Unmarshal(data, &cfg)
-	return &cfg, err
+	return &cfg, toml.Unmarshal(data, &cfg)
 }
 
 func saveConfig(username string, cfg *Config) error {
