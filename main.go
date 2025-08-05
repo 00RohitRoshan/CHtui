@@ -144,7 +144,7 @@ func connectAndStartUI() {
 }
 
 func showUI(conn clickhouse.Conn) {
-	table := tview.NewTable().SetBorders(false)
+	table := tview.NewTable().SetBorders(false).SetSelectable(true, true) // Enable horizontal and vertical scrolling
 	input := tview.NewInputField().SetLabel("Query: ").SetFieldWidth(0)
 	status := tview.NewTextView().SetDynamicColors(true).SetChangedFunc(func() { app.Draw() })
 
@@ -157,20 +157,34 @@ func showUI(conn clickhouse.Conn) {
 		}
 	})
 
+	focusOnTable := false
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch {
-		case event.Key() == tcell.KeyUp:
+		case event.Key() == tcell.KeyTAB:
+			focusOnTable = !focusOnTable
+			if focusOnTable {
+				app.SetFocus(table)
+			} else {
+				app.SetFocus(input)
+			}
+			return nil
+
+		case event.Key() == tcell.KeyUp && !focusOnTable:
 			navigateHistory(input, -1)
 			return nil
-		case event.Key() == tcell.KeyDown:
+
+		case event.Key() == tcell.KeyDown && !focusOnTable:
 			navigateHistory(input, 1)
 			return nil
+
 		case event.Modifiers() == tcell.ModCtrl && event.Rune() == 'r':
 			navigateHistory(input, -1)
 			return nil
+
 		case event.Modifiers() == tcell.ModCtrl && event.Rune() == 'e':
 			exportCSV()
 			return nil
+
 		case event.Modifiers() == tcell.ModCtrl && event.Rune() == 'q':
 			app.Stop()
 			return nil
