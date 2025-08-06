@@ -19,6 +19,9 @@ func (h *QueryHistoryManager) Navigate(dir int) string {
 	} else if h.index >= len(h.history) {
 		h.index = len(h.history) - 1
 	}
+	if len(h.history) == 0{
+		return ""
+	} 
 	return h.history[h.index]
 }
 
