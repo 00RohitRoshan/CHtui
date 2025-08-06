@@ -1,11 +1,14 @@
 package main
 
 func (h *QueryHistoryManager) Add(query string) {
-	// for _, q := range h.history {
-	// 	if q == query {
-	// 		return
-	// 	}
-	// }
+	for i, q := range h.history {
+		if q == query {
+			// Remove the old occurrence
+			h.history = append(h.history[:i], h.history[i+1:]...)
+			break
+		}
+	}
+	// Append at the end (always)
 	h.history = append(h.history, query)
 	if len(h.history) > 50 {
 		h.history = h.history[len(h.history)-50:]
