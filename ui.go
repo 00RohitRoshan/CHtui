@@ -30,7 +30,7 @@ func (ui *ClickHouseUI) setupUI() {
 
 	ui.input.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
-			ui.runQuery(ui.input.GetText())
+			go ui.runQuery(ui.input.GetText())
 			ui.input.SetText("")
 		}
 	})
@@ -66,6 +66,9 @@ func (ui *ClickHouseUI) setupUI() {
 		case event.Rune() == 17: // Ctrl+Q
 			ui.app.Stop()
 			return nil
+		case event.Rune() == 6: // Ctrl+F
+			ui.showHistory()
+			return nil
 		}
 		return event
 	})
@@ -88,6 +91,8 @@ func (ui *ClickHouseUI) runQuery(query string) {
 	if query == "" {
 		return
 	}
+
+	ui.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey { return event })
 
 	go ui.history.Add(query)
 
@@ -134,7 +139,7 @@ func (ui *ClickHouseUI) runQuery(query string) {
 				continue
 			}
 
-			 ui.parseData(scanTargets, rowNum)
+			 ui.parseData(scanTargets, rowNum,func(key tcell.Key){})
 
 			rowNum++
 		}
@@ -150,7 +155,7 @@ func (ui *ClickHouseUI) runQuery(query string) {
 	}()
 }
 
-func (ui *ClickHouseUI) parseData(scanTargets []interface{}, rowNum int) {
+func (ui *ClickHouseUI) parseData(scanTargets []interface{}, rowNum int, fun func(key tcell.Key)) {
 	rowStr := make([]string, len(scanTargets))
 	for i, v := range scanTargets {
 		val := reflect.ValueOf(v)
@@ -168,10 +173,51 @@ func (ui *ClickHouseUI) parseData(scanTargets []interface{}, rowNum int) {
 	current := rowNum
 	go ui.app.QueueUpdateDraw(func() {
 		for colIdx, cell := range rowStr {
-			ui.table.SetCell(current, colIdx, tview.NewTableCell(cell))
+			ui.table.SetCell(current, colIdx, tview.NewTableCell(cell)).SetDoneFunc(fun)
 		}
 	})
 }
+
+func (ui *ClickHouseUI) showHistory() {
+	ui.table.Clear()
+
+	// // Re-assign focus to input
+	ui.app.SetFocus(ui.table)
+
+	// Setup table input handler specifically for history mode
+	ui.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		
+		switch event.Key() {
+		case tcell.KeyEnter:
+			row, _ := ui.table.GetSelection()
+			cell := ui.table.GetCell(row, 0)
+			query := cell.Text
+			ui.input.SetText(query)
+			go ui.runQuery(query)
+			ui.app.SetFocus(ui.input)
+			ui.input.SetText("")
+			return nil
+			
+		case tcell.KeyBackspace, tcell.KeyBackspace2:
+			row, _ := ui.table.GetSelection()
+			cell := ui.table.GetCell(row, 1) // assuming ID is in column 1
+			idStr := cell.Text
+			if err := ui.history.clear(idStr); err != "" {
+				ui.status.SetText(err)
+			} else {
+				ui.showHistory() // re-render after delete
+			}
+			return nil
+		}
+		return event
+	})
+
+	// Render history into table
+	for i, query := range ui.history.history {
+		ui.parseData([]interface{}{query}, i,func(key tcell.Key){}) // assume query is a string
+	}
+}
+
 
 func (ui *ClickHouseUI) exportCSV() {
 	// Writes ui.lastResult to file

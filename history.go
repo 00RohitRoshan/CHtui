@@ -25,7 +25,7 @@ func (h *QueryHistoryManager) clear(a string) string {
 	}
 
 	// Convert to 0-based index
-	index := i - 1
+	index := i 
 
 	if index < 0 || index >= len(h.history) {
 		return "Index out of range"
