@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,7 +24,7 @@ func (ui *ClickHouseUI) Run() error {
 func (ui *ClickHouseUI) setupUI() {
 	// Create input, status, table, layout (refactor of showUI logic)
 	// Set input handlers and global key handlers
-	ui.table = tview.NewTable().SetBorders(false).SetSelectable(true, true) // Enable horizontal and vertical scrolling
+	ui.table = tview.NewTable().SetBorders(false).SetSelectable(true, true).SetBorders(true).SetSeparator(rune('|')) // Enable horizontal and vertical scrolling
 	ui.input = tview.NewInputField().SetLabel("Query: ").SetFieldWidth(0)
 	ui.status = tview.NewTextView().SetDynamicColors(true).SetChangedFunc(func() { ui.app.Draw() })
 
@@ -115,16 +116,16 @@ func (ui *ClickHouseUI) runQuery(query string) {
 		})
 
 		rowNum := 1
-		var scanTargets []interface{}
-
+		
 		for rows.Next() {
 			// Initialize scanTargets on first row
-			if scanTargets == nil {
+			var scanTargets []interface{}
+			// if scanTargets == nil {
 				scanTargets = make([]interface{}, len(colTypes))
 				for i, ct := range colTypes {
 					scanTargets[i] = reflect.New(ct.ScanType()).Interface()
 				}
-			}
+			// }
 
 			if err := rows.Scan(scanTargets...); err != nil {
 				ui.app.QueueUpdateDraw(func() {
@@ -133,26 +134,8 @@ func (ui *ClickHouseUI) runQuery(query string) {
 				continue
 			}
 
-			rowStr := make([]string, len(scanTargets))
-			for i, v := range scanTargets {
-				val := reflect.ValueOf(v)
-				for val.Kind() == reflect.Ptr && !val.IsNil() {
-					val = val.Elem()
-				}
-				if !val.IsValid() {
-					rowStr[i] = ""
-				} else {
-					rowStr[i] = fmt.Sprintf("%v", val.Interface())
-				}
-			}
+			 ui.parseData(scanTargets, rowNum)
 
-			ui.lastResult = append(ui.lastResult, rowStr)
-			current := rowNum
-			go ui.app.QueueUpdateDraw(func() {
-				for colIdx, cell := range rowStr {
-					ui.table.SetCell(current, colIdx, tview.NewTableCell(cell))
-				}
-			})
 			rowNum++
 		}
 		if err := rows.Err(); err != nil {
@@ -165,6 +148,29 @@ func (ui *ClickHouseUI) runQuery(query string) {
 			})
 		}
 	}()
+}
+
+func (ui *ClickHouseUI) parseData(scanTargets []interface{}, rowNum int) {
+	rowStr := make([]string, len(scanTargets))
+	for i, v := range scanTargets {
+		val := reflect.ValueOf(v)
+		for val.Kind() == reflect.Ptr && !val.IsNil() {
+			val = val.Elem()
+		}
+		if !val.IsValid() {
+			rowStr[i] = ""
+		} else {
+			rowStr[i] = fmt.Sprintf("%v", val.Interface())
+		}
+	}
+	rowStr = append(rowStr, strconv.Itoa(rowNum))
+	ui.lastResult = append(ui.lastResult, rowStr)
+	current := rowNum
+	go ui.app.QueueUpdateDraw(func() {
+		for colIdx, cell := range rowStr {
+			ui.table.SetCell(current, colIdx, tview.NewTableCell(cell))
+		}
+	})
 }
 
 func (ui *ClickHouseUI) exportCSV() {
