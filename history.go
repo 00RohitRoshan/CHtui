@@ -1,10 +1,5 @@
 package main
 
-import (
-	"fmt"
-	"strconv"
-)
-
 func (h *QueryHistoryManager) Add(query string) {
 	for _, q := range h.history {
 		if q == query {
@@ -17,15 +12,10 @@ func (h *QueryHistoryManager) Add(query string) {
 	}
 }
 
-func (h *QueryHistoryManager) clear(a string) string {
-	i, err := strconv.Atoi(a)
-	if err != nil {
-
-		return fmt.Sprintf("Invalid index:", a)
-	}
+func (h *QueryHistoryManager) clear(a int) string {
 
 	// Convert to 0-based index
-	index := i 
+	index := a
 
 	if index < 0 || index >= len(h.history) {
 		return "Index out of range"
