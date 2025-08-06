@@ -1,31 +1,24 @@
 package main
 
-import (
-	"fmt"
-	"strconv"
-)
-
 func (h *QueryHistoryManager) Add(query string) {
-	for _, q := range h.history {
+	for i, q := range h.history {
 		if q == query {
-			return
+			// Remove the old occurrence
+			h.history = append(h.history[:i], h.history[i+1:]...)
+			break
 		}
 	}
-	h.history = append([]string{query}, h.history...)
+	// Append at the end (always)
+	h.history = append(h.history, query)
 	if len(h.history) > 50 {
-		h.history = h.history[:50]
+		h.history = h.history[len(h.history)-50:]
 	}
 }
 
-func (h *QueryHistoryManager) clear(a string) string {
-	i, err := strconv.Atoi(a)
-	if err != nil {
-
-		return fmt.Sprintf("Invalid index:", a)
-	}
+func (h *QueryHistoryManager) clear(a int) string {
 
 	// Convert to 0-based index
-	index := i 
+	index := a
 
 	if index < 0 || index >= len(h.history) {
 		return "Index out of range"

@@ -187,9 +187,7 @@ func (ui *ClickHouseUI) showHistory() {
 
 		case tcell.KeyBackspace, tcell.KeyBackspace2:
 			row, _ := ui.table.GetSelection()
-			cell := ui.table.GetCell(row, 1) // assuming ID is in column 1
-			idStr := cell.Text
-			if err := ui.history.clear(idStr); err != "" {
+			if err := ui.history.clear(row); err != "" {
 				ui.status.SetText(err)
 			} else {
 				ui.showHistory() // re-render after delete
