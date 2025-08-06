@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
-	"log"
 	"os"
 	"reflect"
 	"strconv"
@@ -35,23 +34,18 @@ func (ui *ClickHouseUI) setupUI() {
 		}
 	})
 
-	focusOnTable := false
+	ui.focusTable = false
 	ui.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch {
 		case event.Key() == tcell.KeyTAB:
-			focusOnTable = !focusOnTable
-			if focusOnTable {
-				ui.app.SetFocus(ui.table)
-			} else {
-				ui.app.SetFocus(ui.input)
-			}
+			ui.toggleFocus()
 			return nil
 
-		case event.Key() == tcell.KeyUp && !focusOnTable:
+		case event.Key() == tcell.KeyUp && !ui.focusTable:
 			ui.input.SetText(ui.history.Navigate(-1))
 			return nil
 
-		case event.Key() == tcell.KeyDown && !focusOnTable:
+		case event.Key() == tcell.KeyDown && !ui.focusTable:
 			ui.input.SetText(ui.history.Navigate(1))
 			return nil
 
@@ -80,9 +74,6 @@ func (ui *ClickHouseUI) setupUI() {
 
 	ui.app.SetRoot(layout, true).SetFocus(ui.input)
 
-	if err := ui.app.Run(); err != nil {
-		log.Fatal(err)
-	}
 }
 
 func (ui *ClickHouseUI) runQuery(query string) {
@@ -121,15 +112,15 @@ func (ui *ClickHouseUI) runQuery(query string) {
 		})
 
 		rowNum := 1
-		
+
 		for rows.Next() {
 			// Initialize scanTargets on first row
 			var scanTargets []interface{}
 			// if scanTargets == nil {
-				scanTargets = make([]interface{}, len(colTypes))
-				for i, ct := range colTypes {
-					scanTargets[i] = reflect.New(ct.ScanType()).Interface()
-				}
+			scanTargets = make([]interface{}, len(colTypes))
+			for i, ct := range colTypes {
+				scanTargets[i] = reflect.New(ct.ScanType()).Interface()
+			}
 			// }
 
 			if err := rows.Scan(scanTargets...); err != nil {
@@ -139,7 +130,7 @@ func (ui *ClickHouseUI) runQuery(query string) {
 				continue
 			}
 
-			 ui.parseData(scanTargets, rowNum,func(key tcell.Key){})
+			ui.parseData(scanTargets, rowNum, func(key tcell.Key) {})
 
 			rowNum++
 		}
@@ -181,12 +172,9 @@ func (ui *ClickHouseUI) parseData(scanTargets []interface{}, rowNum int, fun fun
 func (ui *ClickHouseUI) showHistory() {
 	ui.table.Clear()
 
-	// // Re-assign focus to input
-	ui.app.SetFocus(ui.table)
-
 	// Setup table input handler specifically for history mode
 	ui.table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		
+
 		switch event.Key() {
 		case tcell.KeyEnter:
 			row, _ := ui.table.GetSelection()
@@ -194,10 +182,9 @@ func (ui *ClickHouseUI) showHistory() {
 			query := cell.Text
 			ui.input.SetText(query)
 			go ui.runQuery(query)
-			ui.app.SetFocus(ui.input)
 			ui.input.SetText("")
 			return nil
-			
+
 		case tcell.KeyBackspace, tcell.KeyBackspace2:
 			row, _ := ui.table.GetSelection()
 			cell := ui.table.GetCell(row, 1) // assuming ID is in column 1
@@ -214,10 +201,9 @@ func (ui *ClickHouseUI) showHistory() {
 
 	// Render history into table
 	for i, query := range ui.history.history {
-		ui.parseData([]interface{}{query}, i,func(key tcell.Key){}) // assume query is a string
+		ui.parseData([]interface{}{query}, i, func(key tcell.Key) {}) // assume query is a string
 	}
 }
-
 
 func (ui *ClickHouseUI) exportCSV() {
 	// Writes ui.lastResult to file
@@ -242,4 +228,13 @@ func (ui *ClickHouseUI) exportCSV() {
 	}
 	writer.Flush()
 	fmt.Fprintf(ui.status, "[green]Exported to %s", filename)
+}
+
+func (ui *ClickHouseUI) toggleFocus() {
+	ui.focusTable = !ui.focusTable
+	if ui.focusTable {
+		ui.app.SetFocus(ui.table)
+	} else {
+		ui.app.SetFocus(ui.input)
+	}
 }
