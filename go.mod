@@ -4,7 +4,6 @@ go 1.23.4
 
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.40.1
-	github.com/gdamore/tcell/v2 v2.8.1
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/rivo/tview v0.0.0-20250625164341-a4a78f1e05cb
 )
@@ -13,6 +12,7 @@ require (
 	github.com/ClickHouse/ch-go v0.67.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/gdamore/encoding v1.0.1 // indirect
+	github.com/gdamore/tcell/v2 v2.8.1 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
 	github.com/go-faster/errors v0.7.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
