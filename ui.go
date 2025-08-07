@@ -84,8 +84,8 @@ func (ui *ClickHouseUI) setupUI() {
 	})
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(ui.table, 0, 1, false).
 		AddItem(ui.input, 1, 0, true).
+		AddItem(ui.table, 0, 1, false).
 		AddItem(ui.status, 2, 0, false)
 
 	ui.app.SetRoot(layout, true).SetFocus(ui.input)
