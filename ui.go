@@ -41,25 +41,10 @@ func (ui *ClickHouseUI) setupUI() {
 			ui.toggleFocus()
 			return nil
 
-		// case event.Key() == tcell.KeyUp && !ui.focusTable:
-		// 	ui.input.SetText(ui.history.Navigate(-1))
-		// 	return nil
-
-		// case event.Key() == tcell.KeyDown && !ui.focusTable:
-		// 	ui.input.SetText(ui.history.Navigate(1))
-		// 	return nil
-
-		case event.Rune() == 18: // Ctrl+R
-			ui.history.Navigate(-1)
-			return nil
-
 		case event.Rune() == 5: // Ctrl+E
 			go ui.exportCSV()
 			return nil
 
-		case event.Rune() == 17: // Ctrl+Q
-			ui.app.Stop()
-			return nil
 		case event.Rune() == 6: // Ctrl+F
 			ui.showHistory()
 			return nil
