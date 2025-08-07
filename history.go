@@ -64,15 +64,6 @@ func (h *QueryHistoryManager) GetQuery(q string) []string {
 		}
 	}
 
-	return matching
-}
-
-func (h *QueryHistoryManager) GetSuggestion(q string) []string {
-	if q == "" {
-		return nil
-	}
-
-	matching := make([]string, 0, len(h.history))
 	words := strings.Split(q, " ")
 	typing := strings.ToLower(words[len(words)-1])
 	for _, entry := range h.extra {
@@ -84,6 +75,24 @@ func (h *QueryHistoryManager) GetSuggestion(q string) []string {
 
 	return matching
 }
+
+// func (h *QueryHistoryManager) GetSuggestion(q string) []string {
+// 	if q == "" {
+// 		return nil
+// 	}
+
+// 	matching := make([]string, 0, len(h.history))
+// 	words := strings.Split(q, " ")
+// 	typing := strings.ToLower(words[len(words)-1])
+// 	for _, entry := range h.extra {
+// 		le := strings.ToLower(entry)
+// 		if strings.Contains(le, typing) {
+// 			matching = append(matching, entry)
+// 		}
+// 	}
+
+// 	return matching
+// }
 
 func (h *QueryHistoryManager) setSuggetions(c ClickHouseClient) {
 	// 1. Base keywords and functions

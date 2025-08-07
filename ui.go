@@ -25,7 +25,38 @@ func (ui *ClickHouseUI) setupUI() {
 	// Set input handlers and global key handlers
 	ui.table = tview.NewTable().SetBorders(false).SetSelectable(true, true).SetBorders(true).SetSeparator(rune('|')) // Enable horizontal and vertical scrolling
 	ui.status = tview.NewTextView().SetDynamicColors(true).SetChangedFunc(func() { ui.app.Draw() })
-	ui.input = tview.NewInputField().SetLabel("Query: ").SetFieldWidth(0).SetAutocompleteFunc(func(currentText string) (entries []string) {ui.status.SetText(fmt.Sprintf("%v",ui.history.GetSuggestion(currentText)));return ui.history.GetQuery(currentText)})
+	ui.input = tview.NewInputField().SetLabel("Query: ").SetFieldWidth(0).SetAutocompleteFunc(func(currentText string) (entries []string) {
+		ui.status.Clear()
+		// ui.status.SetText(fmt.Sprintf("%v",ui.history.GetSuggestion(currentText)))
+		return ui.history.GetQuery(currentText)
+	}).SetAutocompletedFunc(func(text string, index, source int) bool {
+		ui.status.SetText(strconv.Itoa(source))
+		if source != 2 {
+			return false
+		}
+
+		input := strings.TrimSpace(ui.input.GetText())
+		inputForCheck := strings.ToLower(input)
+		textForCheck := strings.ToLower(text)
+
+		// If the full suggestion starts with the full input, just complete it
+		if strings.HasPrefix(textForCheck, inputForCheck) {
+			ui.input.SetText(text)
+			return inputForCheck == textForCheck
+		}
+
+		// Safely replace the last word
+		words := strings.Fields(input)
+		if len(words) == 0 {
+			ui.input.SetText(text)
+			return true
+		}
+
+		words[len(words)-1] = text
+		ui.input.SetText(strings.Join(words, " "))
+		return true
+	})
+
 
 	ui.input.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
@@ -77,6 +108,7 @@ func (ui *ClickHouseUI) runQuery(query string) {
 	start := time.Now()
 
 	go func() {
+		ui.status.Clear()
 		rows, err := ui.client.conn.Query(context.Background(), query)
 		if err != nil {
 			ui.app.QueueUpdateDraw(func() {
