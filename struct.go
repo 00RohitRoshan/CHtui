@@ -28,6 +28,10 @@ type ClickHouseClient struct {
 type QueryHistoryManager struct {
 	history []string
 	index   int
+	dbs		[]string
+	tables	[]string
+	columns	[]string
+	extra	[]string
 }
 
 type ConfigManager struct {

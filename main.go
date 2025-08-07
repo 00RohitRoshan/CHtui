@@ -27,6 +27,7 @@ func main() {
 	}
 
 	history := &QueryHistoryManager{history: cfg.QueryHistory}
+	go history.setSuggetions(*client)
 	ui := &ClickHouseUI{
 		client:  client,
 		config:  cfg,

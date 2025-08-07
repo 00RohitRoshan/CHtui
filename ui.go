@@ -24,8 +24,8 @@ func (ui *ClickHouseUI) setupUI() {
 	// Create input, status, table, layout (refactor of showUI logic)
 	// Set input handlers and global key handlers
 	ui.table = tview.NewTable().SetBorders(false).SetSelectable(true, true).SetBorders(true).SetSeparator(rune('|')) // Enable horizontal and vertical scrolling
-	ui.input = tview.NewInputField().SetLabel("Query: ").SetFieldWidth(0)
 	ui.status = tview.NewTextView().SetDynamicColors(true).SetChangedFunc(func() { ui.app.Draw() })
+	ui.input = tview.NewInputField().SetLabel("Query: ").SetFieldWidth(0).SetAutocompleteFunc(func(currentText string) (entries []string) {ui.status.SetText(fmt.Sprintf("%v",ui.history.GetSuggestion(currentText)));return ui.history.GetQuery(currentText)})
 
 	ui.input.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
@@ -41,13 +41,13 @@ func (ui *ClickHouseUI) setupUI() {
 			ui.toggleFocus()
 			return nil
 
-		case event.Key() == tcell.KeyUp && !ui.focusTable:
-			ui.input.SetText(ui.history.Navigate(-1))
-			return nil
+		// case event.Key() == tcell.KeyUp && !ui.focusTable:
+		// 	ui.input.SetText(ui.history.Navigate(-1))
+		// 	return nil
 
-		case event.Key() == tcell.KeyDown && !ui.focusTable:
-			ui.input.SetText(ui.history.Navigate(1))
-			return nil
+		// case event.Key() == tcell.KeyDown && !ui.focusTable:
+		// 	ui.input.SetText(ui.history.Navigate(1))
+		// 	return nil
 
 		case event.Rune() == 18: // Ctrl+R
 			ui.history.Navigate(-1)
