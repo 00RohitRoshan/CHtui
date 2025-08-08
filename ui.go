@@ -25,6 +25,36 @@ func (ui *ClickHouseUI) setupUI() {
 	// Set input handlers and global key handlers
 	ui.table = tview.NewTable().SetBorders(false).SetSelectable(true, true).SetBorders(true).SetSeparator(rune('|')) // Enable horizontal and vertical scrolling
 	ui.status = tview.NewTextView().SetDynamicColors(true).SetChangedFunc(func() { ui.app.Draw() })
+	ui.setInput()
+
+	ui.focusTable = false
+	ui.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch {
+		case event.Key() == tcell.KeyTAB:
+			ui.toggleFocus()
+			return nil
+
+		case event.Rune() == 5: // Ctrl+E
+			go ui.exportCSV()
+			return nil
+
+		case event.Rune() == 6: // Ctrl+F
+			ui.showHistory()
+			return nil
+		}
+		return event
+	})
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(ui.input, 1, 0, true).
+		AddItem(ui.table, 0, 1, false).
+		AddItem(ui.status, 2, 0, false)
+
+	ui.app.SetRoot(layout, true).SetFocus(ui.input)
+
+}
+
+func (ui *ClickHouseUI) setInput() {
 	ui.input = tview.NewInputField().SetLabel("Query: ").SetFieldWidth(0).SetAutocompleteFunc(func(currentText string) (entries []string) {
 		ui.status.Clear()
 		// ui.status.SetText(fmt.Sprintf("%v",ui.history.GetSuggestion(currentText)))
@@ -55,41 +85,12 @@ func (ui *ClickHouseUI) setupUI() {
 		words[len(words)-1] = text
 		ui.input.SetText(strings.Join(words, " "))
 		return true
-	})
-
-
-	ui.input.SetDoneFunc(func(key tcell.Key) {
+	}).SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
 			go ui.runQuery(ui.input.GetText())
 			ui.input.SetText("")
 		}
 	})
-
-	ui.focusTable = false
-	ui.app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		switch {
-		case event.Key() == tcell.KeyTAB:
-			ui.toggleFocus()
-			return nil
-
-		case event.Rune() == 5: // Ctrl+E
-			go ui.exportCSV()
-			return nil
-
-		case event.Rune() == 6: // Ctrl+F
-			ui.showHistory()
-			return nil
-		}
-		return event
-	})
-
-	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(ui.input, 1, 0, true).
-		AddItem(ui.table, 0, 1, false).
-		AddItem(ui.status, 2, 0, false)
-
-	ui.app.SetRoot(layout, true).SetFocus(ui.input)
-
 }
 
 func (ui *ClickHouseUI) runQuery(query string) {
