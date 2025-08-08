@@ -13,7 +13,7 @@ type ClickHouseUI struct {
 	history     *QueryHistoryManager
 	config      *Config
 	table       *tview.Table
-	input       *tview.InputField
+	input       *tview.TextArea
 	status      *tview.TextView
 	lastResult  [][]string
 	focusTable  bool
