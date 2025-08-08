@@ -52,7 +52,7 @@ func (h *QueryHistoryManager) GetAll() []string {
 }
 
 func (h *QueryHistoryManager) GetQuery(q string) []string {
-	if q == "" {
+	if q == "" || len(q)<3 {
 		return nil
 	}
 	q = strings.ToLower(q)
@@ -66,10 +66,12 @@ func (h *QueryHistoryManager) GetQuery(q string) []string {
 
 	words := strings.Split(q, " ")
 	typing := strings.ToLower(words[len(words)-1])
-	for _, entry := range h.extra {
-		le := strings.ToLower(entry)
-		if strings.Contains(le, typing) {
-			matching = append(matching, entry)
+	if len(typing) > 1 {
+		for _, entry := range h.extra {
+			le := strings.ToLower(entry)
+			if strings.Contains(le, typing) {
+				matching = append(matching, entry)
+			}
 		}
 	}
 
@@ -150,7 +152,7 @@ func (h *QueryHistoryManager) setSuggetions(c ClickHouseClient) {
 			tableSet[fullTable] = struct{}{}
 
 			// Efficiently get column names using SELECT * LIMIT 0
-			colQuery := fmt.Sprintf("SELECT * FROM `%s`.`%s` LIMIT 0", db, tableName)
+			colQuery := fmt.Sprintf("SELECT * FROM `%s`.`%s` LIMIT 1", db, tableName)
 			colRows, err := c.conn.Query(context.Background(), colQuery)
 			if err != nil {
 				continue
