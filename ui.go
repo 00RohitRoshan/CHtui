@@ -23,7 +23,7 @@ func (ui *ClickHouseUI) Run() error {
 func (ui *ClickHouseUI) setupUI() {
 	// Create input, status, table, layout (refactor of showUI logic)
 	// Set input handlers and global key handlers
-	ui.table = tview.NewTable().SetBorders(false).SetSelectable(true, true).SetBorders(true).SetSeparator(rune('|')) // Enable horizontal and vertical scrolling
+	ui.table = tview.NewTable().SetBorders(false).SetSelectable(true, true).SetBorders(false).SetSeparator(rune(':')) // Enable horizontal and vertical scrolling
 	ui.status = tview.NewTextView().SetDynamicColors(true).SetChangedFunc(func() { ui.app.Draw() })
 	ui.setInput()
 
@@ -46,7 +46,7 @@ func (ui *ClickHouseUI) setupUI() {
 	})
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(ui.input, 1, 0, true).
+		AddItem(ui.input, 2, 0, true).
 		AddItem(ui.table, 0, 1, false).
 		AddItem(ui.status, 2, 0, false)
 
@@ -55,7 +55,12 @@ func (ui *ClickHouseUI) setupUI() {
 }
 
 func (ui *ClickHouseUI) setInput() {
-	ui.input = tview.NewTextArea().SetLabel("Query: ").SetSize(2,0)
+	ui.input = tview.NewTextArea().SetLabel("Query: ").SetSize(2,0).
+	SetPlaceholder("Enter Ur Query here").
+	SetChangedFunc(func ()  {
+		s:=ui.history.GetQuery(ui.input.GetText())
+		ui.status.SetText(fmt.Sprintf("%v",s))
+	})
 }
 
 func (ui *ClickHouseUI) runQuery(query string) {
@@ -90,11 +95,12 @@ func (ui *ClickHouseUI) runQuery(query string) {
 
 		ui.app.QueueUpdateDraw(func() {
 			for i, col := range columns {
-				ui.table.SetCell(0, i, tview.NewTableCell(fmt.Sprintf("[::b]%s", col)))
+				ui.table.SetCell(0, i, tview.NewTableCell(fmt.Sprintf(" [::b]%s ", col)))
+				ui.table.SetCell(1, i, tview.NewTableCell(" - - -"))
 			}
 		})
 
-		rowNum := 1
+		rowNum := 2
 
 		for rows.Next() {
 			// Initialize scanTargets on first row
@@ -147,6 +153,7 @@ func (ui *ClickHouseUI) parseData(scanTargets []interface{}, rowNum int, fun fun
 	current := rowNum
 	go ui.app.QueueUpdateDraw(func() {
 		for colIdx, cell := range rowStr {
+			cell = " "+cell+" "
 			ui.table.SetCell(current, colIdx, tview.NewTableCell(cell)).SetDoneFunc(fun)
 		}
 	})
