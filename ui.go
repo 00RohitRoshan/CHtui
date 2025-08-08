@@ -249,7 +249,9 @@ func (ui *ClickHouseUI) toggleFocus() {
 	ui.focusTable = !ui.focusTable
 	if ui.focusTable {
 		ui.app.SetFocus(ui.table)
+		ui.input.SetDisabled(true)
 	} else {
 		ui.app.SetFocus(ui.input)
+		ui.input.SetDisabled(false)
 	}
 }
